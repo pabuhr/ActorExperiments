@@ -1,0 +1,53 @@
+#!/bin/sh -
+
+hostname=`hostname`
+if [ "${hostname}" = "plg2" ] ; then
+    startcore=0
+elif [ "${hostname}" = "plg7b" ] ; then
+    startcore=0
+elif [ "${hostname}" = "nasus" ] ; then
+    startcore=128
+elif [ "${hostname}" = "jax" ] ; then
+    startcore=24
+elif [ "${hostname}" = "pyke" ] ; then
+    startcore=0
+else
+    echo "unsupported host" ${hostname}
+    exit 1
+fi
+
+sed -i 's/max-threads = .*/max-threads = 1/g' caf-application.conf
+#cat caf-application.conf
+for benchmark in SendStatic SendDynamic Become ; do
+    g++ -O3 -Wall -std=c++17 -ICAF/actor-framework/libcaf_core -ICAF/actor-framework/libcaf_core/caf -ICAF/actor-framework/build/libcaf_core -LCAF/actor-framework/build/libcaf_core -LCAF/actor-framework/build/libcaf_io CAF${benchmark}.cpp -lcaf_io -lcaf_core -Wl,-rpath=CAF/actor-framework/build/libcaf_core
+    i=1
+    while [ ${i} -le 5 ] ; do
+	#/usr/bin/time -f "%Uu %Ss %Er %Mkb" a.out
+	taskset -c ${startcore} /usr/bin/time -f "%Uu %Ss %Er %Mkb" a.out
+	i=`expr ${i} + 1`
+    done
+    echo ""
+done
+
+g++ -O3 -Wall -std=c++17 -ICAF/actor-framework/libcaf_core -ICAF/actor-framework/libcaf_core/caf -ICAF/actor-framework/build/libcaf_core -LCAF/actor-framework/build/libcaf_core -LCAF/actor-framework/build/libcaf_io CAFExecutor.cpp -lcaf_io -lcaf_core -Wl,-rpath=CAF/actor-framework/build/libcaf_core
+
+for bt in 1 10 100 ; do
+    echo "batch ${bt}"
+    #p=1
+    #while [ ${p} -le 32 ] ; do
+    for p in 1 2 4 8 16 24 32 ; do
+	i=1
+	while [ ${i} -le 5 ] ; do
+	    sed -i "s/max-threads = .*/max-threads = ${p}/g" caf-application.conf
+	    echo -n "${p} "
+	    #/usr/bin/time -f "%Uu %Ss %Er %Mkb" a.out d d d ${p}
+	    taskset -c ${startcore}-`expr ${startcore} + ${p} - 1` /usr/bin/time -f "%Uu %Ss %Er %Mkb" a.out d d d ${p} ${bt}
+	    i=`expr ${i} + 1`
+	done
+	echo ""
+	#p=`expr ${p} + 2`
+    done
+done
+
+# reset
+sed -i 's/max-threads = .*/max-threads = 1/g' caf-application.conf

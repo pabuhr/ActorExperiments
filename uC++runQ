@@ -1,0 +1,40 @@
+#!/bin/sh -
+
+hostname=`hostname`
+if [ "${hostname}" = "plg2" ] ; then
+    startcore=0
+elif [ "${hostname}" = "plg7b" ] ; then
+    startcore=0
+elif [ "${hostname}" = "nasus" ] ; then
+    startcore=128
+elif [ "${hostname}" = "jax" ] ; then
+    startcore=24
+elif [ "${hostname}" = "pyke" ] ; then
+    startcore=0
+else
+    echo "unsupported host" ${hostname}
+    exit 1
+fi
+
+if [ "${hostname}" = "plg2" ] ; then
+    u++-work -quiet -g -Wall -Wextra -O3 -DNDEBUG -nodebug -multi uC++Executor.cc
+else
+    ~/software/${hostname}/u++-7.0.0/bin/u++ -quiet -g -Wall -Wextra -O3 -nodebug -DNDEBUG -multi uC++Executor.cc
+fi
+
+for qs in 8 16 32 64 96 128 160 192 224 256 384 512 768 1024 ; do
+    echo "queue scale ${qs}"
+    cat /dev/null > uC++ExecutorQ/${qs} # empty file
+    for p in 2 4 8 16 24 32 ; do
+	i=1
+	while [ ${i} -le 5 ] ; do
+	    echo -n "${p} " >> uC++ExecutorQ/${qs}
+	    #/usr/bin/time -f "%Uu %Ss %Er %Mkb" a.out d d d ${p}
+	    taskset -c ${startcore}-`expr ${startcore} + ${p} - 1` /usr/bin/time -f "%Uu %Ss %Er %Mkb" a.out d d d ${p} d ${qs} >> uC++ExecutorQ/${qs} 2>&1
+	    i=`expr ${i} + 1`
+	done
+	echo "" >> uC++ExecutorQ/${qs}
+    done
+    sed -i "s/uC++ Executor //g" uC++ExecutorQ/${qs}
+    sed -i "s/s$//g" uC++ExecutorQ/${qs}
+done

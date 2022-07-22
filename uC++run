@@ -1,0 +1,74 @@
+#!/bin/sh -
+
+hostname=`hostname`
+if [ "${hostname}" = "plg2" ] ; then
+    startcore=0
+elif [ "${hostname}" = "plg7b" ] ; then
+    startcore=0
+elif [ "${hostname}" = "nasus" ] ; then
+    startcore=128
+elif [ "${hostname}" = "jax" ] ; then
+    startcore=24
+elif [ "${hostname}" = "pyke" ] ; then
+    startcore=0
+else
+    echo "unsupported host" ${hostname}
+    exit 1
+fi
+
+cflags="-quiet -g -Wall -Wextra -O3 -nodebug -DNDEBUG -multi"
+
+for benchmark in SendStatic SendDynamic SenderStatic SenderDynamic PromiseStatic PromiseDynamic TraceStatic TraceDynamic Trace Become Coroutine CorActor ; do
+    if [ "${hostname}" = "plg2" ] ; then
+	u++-work ${cflags} uC++${benchmark}.cc
+    else
+	~/software/${hostname}/u++-7.0.0/bin/u++ ${cflags} uC++${benchmark}.cc
+    fi
+    i=1
+    while [ ${i} -le 5 ] ; do
+	taskset -c ${startcore} /usr/bin/time -f "%Uu %Ss %Er %Mkb" a.out
+	i=`expr ${i} + 1`
+    done
+    echo ""
+done
+
+for benchmark in PromiseNo PromiseNoCor Promise PromiseCor PromiseMaybe PromiseMaybeCor ; do
+    if [ "${hostname}" = "plg2" ] ; then
+	u++-work ${cflags} uC++${benchmark}.cc
+    else
+	~/software/${hostname}/u++-7.0.0/bin/u++ ${cflags} uC++${benchmark}.cc
+    fi
+    echo "uC++${benchmark}:"
+    for delay in 1 5 10 25 50 100 250 500 1000 ; do
+        echo "delay: ${delay}"
+        i=1
+        while [ ${i} -le 5 ] ; do
+        taskset -c ${startcore}-`expr ${startcore} + 1` /usr/bin/time -f "%Uu %Ss %Er %Mkb" a.out ${delay}
+        i=`expr ${i} + 1`
+        done
+        echo ""
+    done
+done
+
+if [ "${hostname}" = "plg2" ] ; then
+    u++-work ${cflags} uC++Executor.cc
+else
+    ~/software/${hostname}/u++-7.0.0/bin/u++ ${cflags} uC++Executor.cc
+fi
+
+for bt in 1 10 100 ; do
+    echo "batch ${bt}"
+    #p=1
+    #while [ ${p} -le 32 ] ; do
+    for p in 1 2 4 8 16 24 32 ; do
+	i=1
+	while [ ${i} -le 5 ] ; do
+	    echo -n "${p} "
+	    #/usr/bin/time -f "%Uu %Ss %Er %Mkb" a.out d d d ${p}
+	    taskset -c ${startcore}-`expr ${startcore} + ${p} - 1` /usr/bin/time -f "%Uu %Ss %Er %Mkb" a.out d d d ${p} ${bt}
+	    i=`expr ${i} + 1`
+	done
+	echo ""
+	#p=`expr ${p} + 1`
+    done
+done
