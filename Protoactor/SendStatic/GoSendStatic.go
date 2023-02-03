@@ -20,7 +20,7 @@ func ( state * Send ) Receive( context actor.Context ) {
 	switch context.Message().(type) {
 	  case * Msg:
 		if msg.cnt >= Times  {
-			fmt.Printf( "Protoactor Send Static %v %vns\n", Times, int64(time.Since(start) / time.Duration(Times) / time.Nanosecond) );
+			fmt.Printf( "%v %vns\n", Times, int64(time.Since(start) / time.Duration(Times) / time.Nanosecond) );
 			shake <- "hand"
 			return;
 		} // if
@@ -40,7 +40,7 @@ func usage() {
 func main() {
 	switch len( os.Args ) {
 	  case 2:
-		Times, _ = strconv.Atoi( os.Args[1] )
+		if os.Args[1] != "d" { Times, _ = strconv.Atoi( os.Args[1] ) }
 		if Times < 1 { usage(); }
 	  case 1:											// use defaults
 	  default:

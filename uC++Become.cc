@@ -13,7 +13,7 @@ _Actor Become {
 	Allocation receive( Message & msg ) {				// state 1
 		Case ( Msg, msg ) {
 			if ( msg_d->cnt >= Times ) {
-				cout << "uC++ Become " << Times << ' ' << (steady_clock::now() - starttime).count() / Times << "ns" << endl;
+				cout << Times << ' ' << (steady_clock::now() - starttime).count() / Times << "ns" << endl;
 				return Finished;
 			} // if
 			//cout << "receive " << msg_d->cnt << endl;
@@ -38,7 +38,7 @@ _Actor Become {
 int main( int argc, char * argv[] ) {
 	switch ( argc ) {
 	  case 2:
-		Times = stoi( argv[1] );
+		if ( strcmp( argv[1], "d" ) != 0 ) { Times = stoi( argv[1] ); }
 		if ( Times < 1 ) goto Usage;
 	  case 1:											// use defaults
 		break;

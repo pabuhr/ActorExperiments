@@ -23,7 +23,7 @@ class Executor : public event_based_actor {
 			[=]( int & ) -> void {
 				if ( recs == rounds ) {
 					if ( __atomic_add_fetch( &actorCnt, 1, __ATOMIC_SEQ_CST ) == Actors ) {
-						aout(this) << "CAF Executor " << (steady_clock::now() - starttime).count() / 1'000'000'000.0 << "s" << endl;
+						aout(this) << Processors << " " << (steady_clock::now() - starttime).count() / 1'000'000'000.0 << "s" << endl;
 					} // if
 					this->quit();
 					return;

@@ -27,7 +27,7 @@ _Actor Promise {
 int main( int argc, char * argv[] ) {
 	switch ( argc ) {
 	  case 2:
-		Times = stoi( argv[1] );
+		if ( strcmp( argv[1], "d" ) != 0 ) { Times = stoi( argv[1] ); }
 		if ( Times < 1 ) goto Usage;
 	  case 1:											// use defaults
 		break;

@@ -19,7 +19,7 @@ class Send : public event_based_actor {
 		return {
 			[=]( int & cnt ) -> void {
 				if ( cnt >= Times ) {
-					aout(this) << "CAF Send Static " << Times << " " << (steady_clock::now() - starttime).count() / Times << "ns" << endl;
+					aout(this) << Times << " " << (steady_clock::now() - starttime).count() / Times << "ns" << endl;
 					this->quit();
 					return;
 				} // if
@@ -39,7 +39,7 @@ void caf_main( actor_system & sys ) {
 int main( int argc, char * argv[] ) {
 	switch ( argc ) {
 	  case 2:
-		Times = stoi( argv[1] );
+		if ( strcmp( argv[1], "d" ) != 0 ) { Times = stoi( argv[1] ); }
 		if ( Times < 1 ) goto Usage;
 	  case 1:											// use defaults
 		break;

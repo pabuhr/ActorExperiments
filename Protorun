@@ -2,49 +2,74 @@
 
 hostname=`hostname`
 if [ "${hostname}" = "plg2" ] ; then
-    startcore=0
+	startcore=0
 elif [ "${hostname}" = "plg7b" ] ; then
-    startcore=0
+	startcore=0
 elif [ "${hostname}" = "nasus" ] ; then
-    startcore=128
+	startcore=128
 elif [ "${hostname}" = "jax" ] ; then
-    startcore=24
+	startcore=24
 elif [ "${hostname}" = "pyke" ] ; then
-    startcore=0
+	startcore=0
 else
-    echo "unsupported host" ${hostname}
-    exit 1
+	echo "unsupported host" ${hostname}
+	exit 1
 fi
 
 for benchmark in SendStatic SendDynamic Become ; do
-    cd ./Protoactor/${benchmark}
-    go build
-    i=1
-    while [ ${i} -le 5 ] ; do
-	taskset -c ${startcore} /usr/bin/time -f "%Uu %Ss %Er %Mkb" Go${benchmark}
-	i=`expr ${i} + 1`
-    done
-    echo ""
-    cd - > /dev/null
+	echo "Proto${benchmark}"
+	cd Protoactor/${benchmark}
+	go build
+	cat /dev/null > ../../Proto${benchmark}		# empty file
+	i=1
+	while [ ${i} -le 11 ] ; do
+		taskset -c ${startcore} /usr/bin/time -f "%Uu %Ss %Er %Mkb" Go${benchmark} d >> ../../Proto${benchmark} 2>&1
+		i=`expr ${i} + 1`
+	done
+	rm Go${benchmark}
+	cd - > /dev/null
 done
 
-cd ./Protoactor/Executor
+mkdir -p ProtoBatch
+cd Protoactor/Executor
 go build
 
 for bt in 1 10 100 ; do
-    echo "batch ${bt}"
-    #p=1
-    #while [ ${p} -le 32 ] ; do
-    for p in 1 2 4 8 16 24 32 ; do
-	i=1
-	while [ ${i} -le 5 ] ; do
-	    echo -n "${p} "
-	    taskset -c ${startcore}-`expr ${startcore} + ${p} - 1` /usr/bin/time -f "%Uu %Ss %Er %Mkb" GoExecutor d d d ${p} ${bt}
-	    i=`expr ${i} + 1`
+	echo "ProtoBatch ${bt}"
+	#p=1
+	#while [ ${p} -le 32 ] ; do
+	cat /dev/null > ../../ProtoBatch/ProtoExecutor_${bt} # empty file
+	for p in 1 2 4 8 16 24 32 ; do #
+		i=1
+		while [ ${i} -le 11 ] ; do
+			taskset -c ${startcore}-`expr ${startcore} + ${p} - 1` /usr/bin/time -f "%Uu %Ss %Er %Mkb" GoExecutor d d d ${p} ${bt} >> ../../ProtoBatch/ProtoExecutor_${bt} 2>&1
+			i=`expr ${i} + 1`
+		done
+		echo "" >> ../../ProtoBatch/ProtoExecutor_${bt} 2>&1
+		#p=`expr ${p} + 1`
 	done
-	echo ""
-	#p=`expr ${p} + 2`
-    done
 done
 
+rm GoExecutor
 cd - > /dev/null
+
+cat /dev/null > ProtoMatrix						# empty file
+cd Protoactor/Matrix
+go build
+
+for p in 1 2 4 8 16 24 32 ; do #
+	echo "ProtoMatrix ${p}"
+	i=1
+	while [ ${i} -le 11 ] ; do
+		taskset -c ${startcore}-`expr ${startcore} + ${p} - 1` /usr/bin/time -f "%Uu %Ss %Er %Mkb" GoMatrix d d d ${p} >> ../../ProtoMatrix 2>&1
+		i=`expr ${i} + 1`
+	done
+	echo "" >> ../../ProtoMatrix 2>&1
+done
+
+rm GoMatrix
+cd - > /dev/null
+
+# Local Variables: #
+# tab-width: 4 #
+# End: #

@@ -26,7 +26,7 @@ func ( state * Executor ) Receive( context actor.Context ) {
 	  case * Msg:
 		if state.recs == state.rounds {
 			if ( atomic.AddInt64( &actorCnt, 1 ) == int64(Actors) ) {
-				fmt.Printf( "Protoactor Executor %.2fs\n", time.Since( starttime ).Seconds() );
+				fmt.Printf( "%d %.2fs\n", Processors, time.Since( starttime ).Seconds() );
 				shake <- "hand"
 			} // if
 			return;

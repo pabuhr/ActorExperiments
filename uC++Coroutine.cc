@@ -18,14 +18,14 @@ _Coroutine SusRes {
 		for ( int i = 0; i < Times; i += 1 ) {
 			resume();
 		} // for
-		cout << "uC++ Coroutine " << Times << ' ' << (steady_clock::now() - starttime).count() / Times << "ns" << endl;
+		cout << Times << ' ' << (steady_clock::now() - starttime).count() / Times << "ns" << endl;
 	} // SusRes::next
 }; // SusRes
 
 int main( int argc, char * argv[] ) {
 	switch ( argc ) {
 	  case 2:
-		Times = stoi( argv[1] );
+		if ( strcmp( argv[1], "d" ) != 0 ) { Times = stoi( argv[1] ); }
 		if ( Times < 1 ) goto Usage;
 	  case 1:											// use defaults
 		break;

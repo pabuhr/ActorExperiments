@@ -14,29 +14,27 @@ _Actor Trace {
 	enum { Msgs = 100 };
 	int times = 0, mcnt = 0;
 
-	Allocation tmsgSend( Message & ) {
+	Allocation msgSend( Message & ) {
 		if ( times >= Times ) {
 			cout << Times << ' ' << (steady_clock::now() - starttime).count() / Times / Msgs << "ns" << endl;
 			return Finished;
 		} // if
-		for ( int i = 0; i < Msgs; i += 1 ) *this | tmsg; // send self N messages
-		become( &Trace::tmsgReceive );
-		//tmsg.print();
+		for ( int i = 0; i < Msgs; i += 1 ) *this | msg; // send self N messages
+		become( &Trace::msgReceive );
 		return Nodelete;
 	}
-	Allocation tmsgReceive( Message & ) {				// receive N messages and then toggle state
+	Allocation msgReceive( Message & ) {
 		mcnt += 1;
-		if ( mcnt == Msgs ) {
+		if ( mcnt == Msgs ) {							// receive N messages and then toggle state
 			times += 1;
 			mcnt = 0;
-			become( &Trace::tmsgSend );
-			tmsg.erase();								// prevent trace build up
-			*this | tmsg;
+			become( &Trace::msgSend );
+			*this | msg;
 		} // if
 		return Nodelete;
 	}
   public:
-	Trace() { become( &Trace::tmsgSend ); }
+	Trace() { become( &Trace::msgSend ); }
 }; // Trace
 
 int main( int argc, char * argv[] ) {
@@ -63,5 +61,5 @@ int main( int argc, char * argv[] ) {
 // /usr/bin/time -f "%Uu %Ss %Er %Mkb" a.out
 
 // Local Variables: //
-// compile-command: "u++-work -g -Wall -Wextra -O3 -nodebug -DNDEBUG -multi uC++Trace.cc" //
+// compile-command: "u++-work -g -Wall -Wextra -O3 -nodebug -DNDEBUG -multi uC++SendBasic.cc" //
 // End: //

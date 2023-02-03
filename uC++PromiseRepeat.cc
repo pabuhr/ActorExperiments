@@ -1,18 +1,14 @@
 #include <string>
+#include <iostream>
 using namespace std;
 #include <uActor.h>
 #include <chrono>
 using namespace chrono;
-#include <iostream>
 
-struct IntMsg : public uActor::PromiseMsg< int > {
-	int val;   IntMsg() {}
-};
-struct StrMsg : public uActor::PromiseMsg< string > {
-	string val;   StrMsg() {}
-};
+struct IntMsg : public uActor::PromiseMsg<int> { int val; };
+struct StrMsg : public uActor::PromiseMsg<string> { string val; };
 
-size_t Messages = 1'000'000, Processors = 10, QScale = 2;
+size_t Messages = 100'000, Processors = 4, QScale = 256, Times = 10;
 time_point<steady_clock> starttime;
 
 _Actor Server {
@@ -30,32 +26,41 @@ _Actor Client {
 	IntMsg * intmsg;   uActor::Promise<int> * pi;
 	StrMsg * strmsg;   uActor::Promise<string> * ps;
 	size_t results = 0, times = 0;
-	size_t wi = 0, ws = 0;
 
-	#define ICB [this]( int ) { this->results += 1; if ( this->results == 2 * Messages ) { terminateServers(); return Finished; } return Nodelete; }
-	#define SCB [this]( string ) { this->results += 1; if ( this->results == 2 * Messages ) { terminateServers(); return Finished; } return Nodelete; }
+	#define DUP( T ) [this]( T ) { \
+			this->results += 1; \
+			if ( this->results == 2 * Messages ) { return this->reset(); } \
+			return Nodelete; \
+		}
 
-	void terminateServers() {
-		for ( unsigned int i = 0; i < Messages; i += 1 ) {
-			servers[i] | uActor::stopMsg;
-		} // for
-		cout << Processors << " " << (steady_clock::now() - starttime).count() / 1'000'000'000.0 << "s"
-			 << " " << wi << " " << ws
-			 << endl;
+	Allocation reset() {
+		times += 1;
+		if ( times == Times ) {
+			for ( unsigned int i = 0; i < Messages; i += 1 ) {
+				servers[i] | uActor::stopMsg;
+			} // for
+			return Finished;
+		}
+		for ( size_t i = 0; i < Messages; i += 1 ) {	// any promise fulfilled ?
+			pi[i].reset();
+			ps[i].reset();
+		}
+		results = 0;
+		*this | uActor::startMsg;
+		return Nodelete;
 	}
 
 	Allocation receive( uActor::Message & ) {			// receive callback messages
-		starttime = steady_clock::now();				// start time here to avoid measuring heap allocations
 		for ( size_t i = 0; i < Messages; i += 1 ) {	// send out work
 			pi[i] = servers[i] || intmsg[i];			// ask send
 			ps[i] = servers[i] || strmsg[i];
 		}
 		// Do some other work and then process already completed requests from server.
 		for ( size_t i = 0; i < Messages; i += 1 ) {	// any promise fulfilled ?
-			if ( pi[i].then( ICB ) ) wi += 1;
-			if ( ps[i].then( SCB ) ) ws += 1;
+			pi[i].then( DUP( int ) );
+			ps[i].then( DUP( string ) );
 		}
-		if ( results == 2 * Messages ) { terminateServers(); return Finished; }	// all messages handled ?
+		if ( results == 2 * Messages ) { return reset(); } // all messages handled ?
 		// Any outstanding server messages are handled by implicit callbacks from the server.
 		return Nodelete;								// reuse actor
 	}
@@ -67,15 +72,20 @@ _Actor Client {
 		ps = new uActor::Promise<string>[Messages];
 	}
 	~Client() {
-		delete[] intmsg;
-		delete[] strmsg;
-		delete[] pi;
-		delete[] ps;
+		delete [] ps;
+		delete [] pi;
+		delete [] strmsg;
+		delete [] intmsg;
 	}
 };
 
 int main( int argc, char * argv[] ) {
 	switch ( argc ) {
+	  case 5:
+		if ( strcmp( argv[4], "d" ) != 0 ) {			// default ?
+			Times = stoi( argv[4] );
+			if ( Times < 1 ) goto Usage;
+		} // if
 	  case 4:
 		if ( strcmp( argv[3], "d" ) != 0 ) {			// default ?
 			QScale = stoi( argv[3] );
@@ -99,6 +109,7 @@ int main( int argc, char * argv[] ) {
 			 << ") ] [ messages (> 0) | 'd' (default " << Messages
 			 << ") ] [ processors (> 0) | 'd' (default " << Processors
 			 << ") ] [ qscale (> 0) | 'd' (default " << QScale
+			 << ") ] [ Times (> 0) | 'd' (default " << Times
 			 << ") ]" << endl;
 		exit( EXIT_FAILURE );
 	} // switch
@@ -108,11 +119,12 @@ int main( int argc, char * argv[] ) {
 	servers = new Server[Messages];
 	Client client;
 	client | uActor::startMsg;							// start actors
+	time_point<steady_clock> starttime = steady_clock::now();
 	uActor::stop();										// wait for all actors to terminate
-	delete[] servers;
-//	delete executor;
+	cout << Processors << " " << (steady_clock::now() - starttime).count() / 1'000'000'000.0 << "s" << endl;
+	delete [] servers;
 }
 
 // Local Variables: //
-// compile-command: "u++-work -g -Wall -Wextra -O3 -nodebug -DNDEBUG -multi uC++Promise.cc" //
+// compile-command: "u++-work -g -Wall -Wextra -O3 -nodebug -DNDEBUG -multi uC++PromiseRepeat.cc" //
 // End: //

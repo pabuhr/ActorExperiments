@@ -5,10 +5,10 @@ using namespace std;
 using namespace chrono;
 #include <iostream>
 
-struct IntMsg : public uActor::PromiseMsg< int > {
+struct IntMsg : public uActor::SenderMsg {
 	int val;   IntMsg() {}
 };
-struct StrMsg : public uActor::PromiseMsg< string > {
+struct StrMsg : public uActor::SenderMsg {
 	string val;   StrMsg() {}
 };
 
@@ -17,8 +17,8 @@ time_point<steady_clock> starttime;
 
 _Actor Server {
 	Allocation receive( uActor::Message & msg ) {
-		Case( IntMsg, msg ) { msg_d->delivery( 7 ); }
-		else Case( StrMsg, msg ) { msg_d->delivery( "XYZ" ); }
+		Case( IntMsg, msg ) { msg_d->val = 7; *msg_d->sender() | msg; }
+		else Case( StrMsg, msg ) { msg_d->val = "XYZ"; *msg_d->sender() | msg; }
 		else Case( StopMsg, msg ) { return Finished; }
 		return Nodelete;								// reuse actor
 	}
@@ -27,50 +27,42 @@ _Actor Server {
 Server * servers;
 
 _Actor Client {
-	IntMsg * intmsg;   uActor::Promise<int> * pi;
-	StrMsg * strmsg;   uActor::Promise<string> * ps;
-	size_t results = 0, times = 0;
-	size_t wi = 0, ws = 0;
+	IntMsg * intmsg;
+	StrMsg * strmsg;
+	size_t results = 0;
 
-	#define ICB [this]( int ) { this->results += 1; if ( this->results == 2 * Messages ) { terminateServers(); return Finished; } return Nodelete; }
+	#define ICB [this]( int ) {}
 	#define SCB [this]( string ) { this->results += 1; if ( this->results == 2 * Messages ) { terminateServers(); return Finished; } return Nodelete; }
 
 	void terminateServers() {
 		for ( unsigned int i = 0; i < Messages; i += 1 ) {
 			servers[i] | uActor::stopMsg;
 		} // for
-		cout << Processors << " " << (steady_clock::now() - starttime).count() / 1'000'000'000.0 << "s"
-			 << " " << wi << " " << ws
-			 << endl;
+		cout << Processors << " " << (steady_clock::now() - starttime).count() / 1'000'000'000.0 << "s" << endl;
 	}
 
-	Allocation receive( uActor::Message & ) {			// receive callback messages
-		starttime = steady_clock::now();				// start time here to avoid measuring heap allocations
-		for ( size_t i = 0; i < Messages; i += 1 ) {	// send out work
-			pi[i] = servers[i] || intmsg[i];			// ask send
-			ps[i] = servers[i] || strmsg[i];
+	Allocation receive( uActor::Message & msg ) {		// receive callback messages
+		Case( IntMsg, msg ) results += 1;
+		else Case( StrMsg, msg ) results += 1;
+		else Case( StartMsg, msg ) {
+			starttime = steady_clock::now();			// start time here to avoid measuring heap allocations
+			for ( unsigned int i = 0; i < Messages; i += 1 ) { // send out work
+				servers[i] | intmsg[i];					// tell send
+				servers[i] | strmsg[i];
+			}
 		}
-		// Do some other work and then process already completed requests from server.
-		for ( size_t i = 0; i < Messages; i += 1 ) {	// any promise fulfilled ?
-			if ( pi[i].then( ICB ) ) wi += 1;
-			if ( ps[i].then( SCB ) ) ws += 1;
-		}
-		if ( results == 2 * Messages ) { terminateServers(); return Finished; }	// all messages handled ?
-		// Any outstanding server messages are handled by implicit callbacks from the server.
+
+		if ( results == 2 * Messages ) { terminateServers(); return Finished; }
 		return Nodelete;								// reuse actor
 	}
   public:
 	Client() {
 		intmsg = new IntMsg[Messages];
 		strmsg = new StrMsg[Messages];
-		pi = new uActor::Promise<int>[Messages];
-		ps = new uActor::Promise<string>[Messages];
 	}
 	~Client() {
 		delete[] intmsg;
 		delete[] strmsg;
-		delete[] pi;
-		delete[] ps;
 	}
 };
 
@@ -114,5 +106,5 @@ int main( int argc, char * argv[] ) {
 }
 
 // Local Variables: //
-// compile-command: "u++-work -g -Wall -Wextra -O3 -nodebug -DNDEBUG -multi uC++Promise.cc" //
+// compile-command: "u++-work -g -Wall -Wextra -O3 -nodebug -DNDEBUG -multi uC++NoPromise.cc" //
 // End: //

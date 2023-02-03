@@ -2,73 +2,171 @@
 
 hostname=`hostname`
 if [ "${hostname}" = "plg2" ] ; then
-    startcore=0
-elif [ "${hostname}" = "plg7b" ] ; then
-    startcore=0
+        startsocket=0
+        cores=32
+        sockets=1
+        hyper=0
 elif [ "${hostname}" = "nasus" ] ; then
-    startcore=128
-elif [ "${hostname}" = "jax" ] ; then
-    startcore=24
+        startsocket=1
+        cores=128
+        sockets=2
+        hyper=1
 elif [ "${hostname}" = "pyke" ] ; then
-    startcore=0
+        startsocket=1
+        cores=48
+        sockets=2
+        hyper=1
 else
-    echo "unsupported host" ${hostname}
-    exit 1
+        echo "unsupported host" ${hostname}
+        exit 1
 fi
+startcore=`expr ${startsocket} \* ${cores} / 2`
+
+taskset=""      # return value
+packedaffinity() {
+    taskset=""
+    if [ ${1} -eq 0 ] ; then taskset="${startcore}-${startcore}"; return; fi
+    if [ ${hyper} -eq 1 ] ; then
+        num=${1}
+        s=${startsocket}
+        while [ ${s} -lt $sockets ] ; do
+            startcore=`expr ${s} \* ${cores}  / 2`
+            if [ ${num} -gt ${cores} ] ; then
+                taskset=${taskset}"${startcore}-`expr ${startcore} + ${cores} / 2 - 1`,`expr ${startcore} + ${cores}`-`expr ${startcore} + ${cores} + ${cores} / 2 - 1`"
+                num=`expr ${num} - ${cores}`
+                if [ `expr ${s} + 1` -ge ${sockets} ] ; then
+                    break
+                fi
+                taskset=${taskset},
+            elif [ `expr ${num} % 2` -eq 0 ] ; then
+                taskset=${taskset}"${startcore}-`expr ${num} / 2 + ${startcore}`,`expr ${startcore} + ${cores}`-`expr ${num} / 2 + ${startcore} + ${cores} - 1`"
+                break
+            else
+                taskset=${taskset}"${startcore}-`expr ${num} / 2 + ${startcore}`,`expr ${startcore} + ${cores}`-`expr ${num} / 2 + ${startcore} + ${cores}`"
+                break
+            fi
+
+            s=$(( s + 1 ))
+        done
+    else
+        taskset="${startcore}-`expr ${1} + ${startcore}`"
+    fi
+}
+
+spreadaffinity() {
+    taskset=""
+    if [ ${1} -eq 0 ] ; then taskset="${startcore}-${startcore}"; return; fi
+    if [ ${hyper} -eq 1 ] ; then
+        num=${1}
+        s=${startsocket}
+        while [ ${s} -lt $sockets ] ; do
+            startcore=`expr ${s} \* ${cores}  / 2`
+            if [ ${num} -gt ${cores} ] ; then
+                taskset=${taskset}"${startcore}-`expr ${startcore} + ${cores} / 2 - 1`,`expr ${startcore} + ${cores}`-`expr ${startcore} + ${cores} + ${cores} / 2 - 1`"
+                num=`expr ${num} - ${cores}`
+                if [ `expr ${s} + 1` -ge ${sockets} ] ; then
+                    break
+                fi
+                taskset=${taskset},
+            elif [ ${num} -gt `expr ${cores} / 2` ] ; then
+                taskset=${taskset}"${startcore}-`expr ${startcore} + ${cores} / 2 - 1`,`expr ${startcore} + ${cores}`-$(( ${startcore} + ${cores} + ( ${num} - ${cores} / 2 ) ))"
+                break
+            else
+                taskset=${taskset}"${startcore}-`expr ${startcore} + ${num}`"
+                break
+            fi
+            s=$(( s + 1 ))
+        done
+    else
+        taskset="${startcore}-`expr ${1} + ${startcore}`"
+    fi
+}
 
 cflags="-quiet -g -Wall -Wextra -O3 -nodebug -DNDEBUG -multi"
 
-for benchmark in SendStatic SendDynamic SenderStatic SenderDynamic PromiseStatic PromiseDynamic TraceStatic TraceDynamic Trace Become Coroutine CorActor ; do
-    if [ "${hostname}" = "plg2" ] ; then
-	u++-work ${cflags} uC++${benchmark}.cc
-    else
-	~/software/${hostname}/u++-7.0.0/bin/u++ ${cflags} uC++${benchmark}.cc
-    fi
-    i=1
-    while [ ${i} -le 5 ] ; do
-	taskset -c ${startcore} /usr/bin/time -f "%Uu %Ss %Er %Mkb" a.out
-	i=`expr ${i} + 1`
-    done
-    echo ""
-done
-
-for benchmark in PromiseNo PromiseNoCor Promise PromiseCor PromiseMaybe PromiseMaybeCor ; do
-    if [ "${hostname}" = "plg2" ] ; then
-	u++-work ${cflags} uC++${benchmark}.cc
-    else
-	~/software/${hostname}/u++-7.0.0/bin/u++ ${cflags} uC++${benchmark}.cc
-    fi
-    echo "uC++${benchmark}:"
-    for delay in 1 5 10 25 50 100 250 500 1000 ; do
-        echo "delay: ${delay}"
-        i=1
-        while [ ${i} -le 5 ] ; do
-        taskset -c ${startcore}-`expr ${startcore} + 1` /usr/bin/time -f "%Uu %Ss %Er %Mkb" a.out ${delay}
-        i=`expr ${i} + 1`
-        done
-        echo ""
-    done
-done
-
 if [ "${hostname}" = "plg2" ] ; then
-    u++-work ${cflags} uC++Executor.cc
+	UPP=u++-work
 else
-    ~/software/${hostname}/u++-7.0.0/bin/u++ ${cflags} uC++Executor.cc
+	UPP=~/software/${hostname}/u++-7.0.0/bin/u++
 fi
 
-for bt in 1 10 100 ; do
-    echo "batch ${bt}"
-    #p=1
-    #while [ ${p} -le 32 ] ; do
-    for p in 1 2 4 8 16 24 32 ; do
-	i=1
-	while [ ${i} -le 5 ] ; do
-	    echo -n "${p} "
-	    #/usr/bin/time -f "%Uu %Ss %Er %Mkb" a.out d d d ${p}
-	    taskset -c ${startcore}-`expr ${startcore} + ${p} - 1` /usr/bin/time -f "%Uu %Ss %Er %Mkb" a.out d d d ${p} ${bt}
-	    i=`expr ${i} + 1`
+#for benchmark in SendStatic SendDynamic SenderStatic SenderDynamic PromiseStatic PromiseDynamic TraceStatic TraceDynamic SendBasic Trace Become Coroutine CorActor ; do
+#	echo "uC++${benchmark}"
+#	${UPP} ${cflags} uC++${benchmark}.cc
+#	cat /dev/null > uC++${benchmark}				# empty file
+#	i=1
+#	while [ ${i} -le 11 ] ; do
+#		taskset -c ${startcore} /usr/bin/time -f "%Uu %Ss %Er %Mkb" a.out d >> uC++${benchmark} 2>&1
+#		i=`expr ${i} + 1`
+#	done
+#done
+
+#for benchmark in PromiseNo PromiseNoCor Promise PromiseCor PromiseMaybe PromiseMaybeCor ; do
+#	${UPP} ${cflags} uC++${benchmark}.cc
+#	echo "uC++${benchmark}:"
+#	for delay in 1 5 10 25 50 100 250 500 1000 ; do
+#		echo "delay: ${delay}"
+#		i=1
+#		while [ ${i} -le 11 ] ; do
+#		taskset -c ${startcore}-`expr ${startcore} + 1` /usr/bin/time -f "%Uu %Ss %Er %Mkb" a.out ${delay}
+#		i=`expr ${i} + 1`
+#		done
+#		echo ""
+#	done
+#done
+
+#${UPP} ${cflags} uC++Executor.cc
+#mkdir -p uC++Batch
+#
+#for bt in 1 10 100 ; do
+#	echo "uC++Batch ${bt}"
+#	#p=1
+#	#while [ ${p} -le 32 ] ; do
+#	cat /dev/null > uC++Batch/uC++Executor_${bt}	# empty file
+#	for p in 1 2 4 8 16 24 32 ; do #
+#		i=1
+#		while [ ${i} -le 11 ] ; do
+#			#/usr/bin/time -f "%Uu %Ss %Er %Mkb" a.out d d d ${p}
+#			taskset -c ${startcore}-`expr ${startcore} + ${p} - 1` /usr/bin/time -f "%Uu %Ss %Er %Mkb" a.out d d d ${p} ${bt} >> uC++Batch/uC++Executor_${bt} 2>&1
+#			i=`expr ${i} + 1`
+#		done
+#		echo "" >> uC++Batch/uC++Executor_${bt} 2>&1
+#		#p=`expr ${p} + 1`
+#	done
+#done
+
+for benchmark in PromiseRepeat NoPromiseRepeat ; do
+	${UPP} ${cflags} uC++${benchmark}.cc
+	for msgs in 10 20 30 ; do #
+		echo "uC++${benchmark}_${msgs}"
+		cat /dev/null > uC++${benchmark}_${msgs}	# empty file
+		for p in 1 2 4 8 16 24 32 ; do #
+			i=1
+			while [ ${i} -le 11 ] ; do
+				spreadaffinity `expr ${p} - 1`
+				taskset -c ${taskset} /usr/bin/time -f "%Uu %Ss %Er %Mkb" a.out ${msgs}0000 ${p} 256 200 >> uC++${benchmark}_${msgs} 2>&1
+				i=`expr ${i} + 1`
+			done
+			echo "" >> uC++${benchmark}_${msgs}
+		done
 	done
-	echo ""
-	#p=`expr ${p} + 1`
-    done
 done
+
+#${UPP} ${cflags} uC++Matrix.cc
+#cat /dev/null > uC++Matrix							# empty file
+#
+#for p in 1 2 4 8 16 24 32 ; do #
+#	echo "uC++Matrix ${p}"
+#	i=1
+#	while [ ${i} -le 11 ] ; do
+#		taskset -c ${startcore}-`expr ${startcore} + ${p} - 1` /usr/bin/time -f "%Uu %Ss %Er %Mkb" a.out d d d ${p} >> uC++Matrix 2>&1
+#		i=`expr ${i} + 1`
+#	done
+#	echo "" >> uC++Matrix
+#done
+
+rm a.out
+
+# Local Variables: #
+# tab-width: 4 #
+# End: #

@@ -4,47 +4,76 @@ sbtflags="--warn -J-Xmx32g"
 
 hostname=`hostname`
 if [ "${hostname}" = "plg2" ] ; then
-    startcore=0
+	startcore=0
 elif [ "${hostname}" = "plg7b" ] ; then
-    startcore=0
+	startcore=0
 elif [ "${hostname}" = "nasus" ] ; then
-    startcore=128
+	startcore=128
 elif [ "${hostname}" = "jax" ] ; then
-    startcore=24
+	startcore=24
 elif [ "${hostname}" = "pyke" ] ; then
-    startcore=0
+	startcore=0
 else
-    echo "unsupported host" ${hostname}
-    exit 1
+	echo "unsupported host" ${hostname}
+	exit 1
 fi
 
-for benchmark in static dynamic ; do
-    cd ./AkkaT/${benchmark}
-    rm -rf project target			# random out of memory errors without this
-    taskset -c ${startcore} /usr/bin/time -f "%Uu %Ss %Er %Mkb" sbt ${sbtflags} "run" 2>&1 | grep -v "SLF4J:" | grep -v "Slf4jLogger started"
-    echo ""
-    cd - > /dev/null
+for benchmark in SendStatic SendDynamic ; do
+	echo "AkkaT${benchmark}"
+	cd AkkaT/${benchmark}
+	rm -rf project target			# random out of memory errors without this
+	taskset -c ${startcore} /usr/bin/time -f "%Uu %Ss %Er %Mkb" sbt ${sbtflags} "run d" 2>&1 | grep -v "SLF4J:" | grep -v "Slf4jLogger started" | sed -e "s/\x1b\[0J//" > ../../AkkaT${benchmark}
+	cd - > /dev/null
 done
 
-cd ./AkkaT/executor
+mkdir -p AkkaTBatch
+cd AkkaT/Executor
 rm -rf project target				# random out of memory errors without this
 
 for bt in 1 10 100 ; do
-    echo "batch ${bt}"
-    #p=1
-    #while [ ${p} -le 32 ] ; do
-    for p in 1 2 4 8 16 24 32 ; do
-	sed -i "s/parallelism-min = .*/parallelism-min = ${p}/g" application.conf
-	sed -i "s/parallelism-max = .*/parallelism-max = ${p}/g" application.conf
-	echo "${p} processor"
-	taskset -c ${startcore}-`expr ${startcore} + ${p} - 1` /usr/bin/time -f "%Uu %Ss %Er %Mkb" sbt ${sbtflags} "run d d d ${p} ${bt}" 2>&1 | grep -v "SLF4J:" | grep -v "Slf4jLogger started"
-	#p=`expr ${p} + 1`
-	echo ""
-	sbt clean > /dev/null
-    done
+	echo "AkkaTBatch ${bt}"
+	#p=1
+	#while [ ${p} -le 32 ] ; do
+	cat /dev/null > ../../AkkaTBatch/AkkaTExecutor_${bt}	# empty file
+	for p in 1 2 4 8 16 24 32 ; do #
+		sed -i "s/parallelism-min = .*/parallelism-min = ${p}/g" application.conf
+		sed -i "s/parallelism-max = .*/parallelism-max = ${p}/g" application.conf
+		taskset -c ${startcore}-`expr ${startcore} + ${p} - 1` /usr/bin/time -f "%Uu %Ss %Er %Mkb" sbt ${sbtflags} "run d d d ${p} ${bt}" 2>&1 | grep -v "SLF4J:" | grep -v "Slf4jLogger started" | sed -e "s/\x1b\[0J//" >> ../../AkkaTBatch/AkkaTExecutor_${bt}
+		#p=`expr ${p} + 1`
+		echo "" >> ../../AkkaTBatch/AkkaTExecutor_${bt}
+		sbt clean > /dev/null
+	done
 done
 
 # reset
 sed -i "s/parallelism-min = .*/parallelism-min = 1/g" application.conf
 sed -i "s/parallelism-max = .*/parallelism-max = 1/g" application.conf
 cd - > /dev/null
+
+cat /dev/null > AkkaTMatrix			# empty file
+cd AkkaT/Matrix
+rm -rf project target				# random out of memory errors without this
+
+for p in 1 2 4 8 16 24 32 ; do #
+	echo "AkkaTMatrix ${p}"
+	sed -i "s/parallelism-min = .*/parallelism-min = ${p}/g" application.conf
+	sed -i "s/parallelism-max = .*/parallelism-max = ${p}/g" application.conf
+	# echo "${p} processor"
+	i=1
+	while [ ${i} -le 11 ] ; do
+		#/usr/bin/time -f "%Uu %Ss %Er %Mkb" a.out d d d ${p}
+		taskset -c ${startcore}-`expr ${startcore} + ${p} - 1` /usr/bin/time -f "%Uu %Ss %Er %Mkb" sbt ${sbtflags} "run d d d ${p}" 2>&1 | grep -v "SLF4J:" | grep -v "Slf4jLogger started" | sed -e "s/\x1b\[0J//" >> ../../AkkaTMatrix
+		i=`expr ${i} + 1`
+	done
+	echo "" >> ../../AkkaTMatrix
+	sbt clean > /dev/null
+done
+
+# reset
+sed -i "s/parallelism-min = .*/parallelism-min = 1/g" application.conf
+sed -i "s/parallelism-max = .*/parallelism-max = 1/g" application.conf
+cd - > /dev/null
+
+# Local Variables: #
+# tab-width: 4 #
+# End: #

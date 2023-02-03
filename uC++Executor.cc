@@ -89,13 +89,13 @@ int main( int argc, char * argv[] ) {
 	} // switch
 
 	uExecutor * executor = new uExecutor( Processors, Processors, // too large for task stack
-										  Processors == 1 ? 1 : Processors * Qscale, true, 0 );
+										  Processors == 1 ? 1 : Processors * Qscale, true, -1 );
 	uActor::start( executor );							// start actor system
 	Executor * actors = new Executor[Actors];			// too many actors for task stack
 	starttime = steady_clock::now();
 	for ( int i = 0; i < Actors; i += 1 ) actors[i] | msg; // start actors
 	uActor::stop();										// wait for all actors to terminate
-	cout << "uC++ Executor " << (steady_clock::now() - starttime).count() / 1'000'000'000.0 << "s" << endl; // '
+	cout << Processors << " " << (steady_clock::now() - starttime).count() / 1'000'000'000.0 << "s" << endl; // '
 	delete [] actors;
 	delete executor;
 	// malloc_stats();

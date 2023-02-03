@@ -29,7 +29,7 @@ _CorActor SusRes {
 			*this | msg;								// send message to self
 			suspend();
 		} // for
-		cout << "uC++ CorActor " << Times << ' ' << (steady_clock::now() - starttime).count() / Times << "ns" << endl;
+		cout << Times << ' ' << (steady_clock::now() - starttime).count() / Times << "ns" << endl;
 		status = Finished;
 	} // SusRes::main
 }; // SusRes
@@ -37,7 +37,7 @@ _CorActor SusRes {
 int main( int argc, char * argv[] ) {
 	switch ( argc ) {
 	  case 2:
-		Times = stoi( argv[1] );
+		if ( strcmp( argv[1], "d" ) != 0 ) { Times = stoi( argv[1] ); }
 		if ( Times < 1 ) goto Usage;
 	  case 1:											// use defaults
 		break;
